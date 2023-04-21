@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "foci-bot",
+  "description": "Base Level Extension",
+  "version": "1.0",
+  "action": {
+    "default_popup": "foci_bot.html",
+    "default_icon": "assets/foci_bot_icon.png"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "scripts/web_player_content.js"
+      ],
+      "matches": [
+        "https://open.spotify.com/*"
+      ]
+    }
+  ]
+}
