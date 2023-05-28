@@ -1,19 +1,22 @@
 /* Script to modify the content of Spotify Web Player. */
 
-// import SpotifyClient from '../utils/spotify_client.js'
-
-CONTENT_POLL_INTERVAL = 100
-CONTENT_POLL_TIMEOUT = 10000
 MAIN_CONTENT_SELECTOR = '.Root'
-ADDITIONAL_WAIT = 2000  // Event after main content loaded, not all tracks are.
-
-FOCI_PLAYLIST_ID = '76OCVnnBFLGwroNqfEo8IU'
-PLAYLIST_IDS = [FOCI_PLAYLIST_ID]
-
 TRACK_LINKS_SELECTOR = 'a[href^="/track/"]'
 
-INCLUDED_PRIMARY_PLAYLIST_COLOR = 'lightgreen'
-NOT_INCLUDED_COLOR = 'red'
+PLAYLIST_STYLE_GUIDE = {
+  // foci
+  '76OCVnnBFLGwroNqfEo8IU': {color: 'palegreen'},
+  // foci_archive
+  '0fQQnQBQwa6CZgamlDac2Z': {color: 'khaki'},
+
+  // acceptable II
+  '74wBN03GfuLjXKclHnXynE': {color: 'lightskyblue'},
+  // emo
+  '1weePWdySMTM3uE5Iwgql4': {color: 'mediumpurple'},
+  // acceptable
+  '03XeYNOEtrpPxVq1r44EPR': {color: 'cadetblue'},
+}
+NO_PLAYLIST_COLOR = 'indianred'
 
 class WebPlayerStyler {
   constructor(playlistIds) {
@@ -71,16 +74,17 @@ class WebPlayerStyler {
   }
 
   trackStyle(trackElement) {
-    // Will need to generalize this.
-    const primaryPlaylistId = FOCI_PLAYLIST_ID
-    const primaryPlaylistData = this.playlistData[primaryPlaylistId]
-
     const elementTrackId = trackElement.getAttribute('href').split('/')[2]
-    
-    // Determine color.
-    let color = NOT_INCLUDED_COLOR
-    const trackIncludedPrimaryPlaylist = this.spotifyClient.trackIdInPlaylist({trackId: elementTrackId, playlistData: primaryPlaylistData})
-    if (trackIncludedPrimaryPlaylist) color = INCLUDED_PRIMARY_PLAYLIST_COLOR
+    let color = NO_PLAYLIST_COLOR
+    let matched = false
+    Object.entries(PLAYLIST_STYLE_GUIDE).forEach(([playlistId, playlistStyle]) => {
+      const playlistData = this.playlistData[playlistId]
+      const trackIncluded = this.spotifyClient.trackIdInPlaylist({trackId: elementTrackId, playlistData: playlistData})
+      if (!matched && trackIncluded) {
+        matched = true
+        color = playlistStyle.color
+      }
+    })
 
     return {color}
   }
@@ -106,7 +110,7 @@ class WebPlayerStyler {
 }
 
 async function main() {
-  styler = new WebPlayerStyler(PLAYLIST_IDS)
+  styler = new WebPlayerStyler(Object.keys(PLAYLIST_STYLE_GUIDE))
 }
 
 main()
