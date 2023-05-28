@@ -16,5 +16,15 @@
         "https://open.spotify.com/*"
       ]
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://open.spotify.com/*"
+      ],
+      "resources": [
+        "utils/spotify_client.js"
+      ]
+    }
   ]
 }

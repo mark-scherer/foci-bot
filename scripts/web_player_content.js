@@ -1,100 +1,112 @@
 /* Script to modify the content of Spotify Web Player. */
 
+// import SpotifyClient from '../utils/spotify_client.js'
+
 CONTENT_POLL_INTERVAL = 100
 CONTENT_POLL_TIMEOUT = 10000
-MAIN_CONTENT_SELECTOR = '.Root__main-view'
+MAIN_CONTENT_SELECTOR = '.Root'
 ADDITIONAL_WAIT = 2000  // Event after main content loaded, not all tracks are.
 
-TRACK_SELECTOR = 'a[href^="/track/"]'
+FOCI_PLAYLIST_ID = '76OCVnnBFLGwroNqfEo8IU'
+PLAYLIST_IDS = [FOCI_PLAYLIST_ID]
 
-INCLUDED_FOCI_COLOR = 'lightgreen'
+TRACK_LINKS_SELECTOR = 'a[href^="/track/"]'
 
-/**
- * Delay for main page element to load.
- */
-async function waitForContent() {
-  return new Promise((resolve, reject) => {
-    pollInterval = setInterval(() => {
-      console.log(`Polling for content...`)
-      content = document.querySelector(MAIN_CONTENT_SELECTOR)
-      if (content) {
-        console.log('Found content!')
-        clearInterval(pollInterval)
-        resolve()
-      }
-    }, CONTENT_POLL_INTERVAL)
+INCLUDED_PRIMARY_PLAYLIST_COLOR = 'lightgreen'
+NOT_INCLUDED_COLOR = 'red'
+
+class WebPlayerStyler {
+  constructor(playlistIds) {
+    this.playlistIds = playlistIds
+    this.playlistData = {}
+
+    // Trigger async instance setup.
+    this.setup()
+  }
+
+  /**
+   * Async class setup - ctor cannot use async/await.
+   */
+  async setup() {
+    // Setup spotify client.
+    const src = chrome.runtime.getURL('utils/spotify_client.js')
+    const spotifyClientLibrary = await import(src)
+    this.spotifyClient = new spotifyClientLibrary.SpotifyClient()
+
+    // Fetch playlist data.
+    await this.fetchPlaylists()
+
+    // Setup styler event handler.
+    const playerContainer = document.querySelector(MAIN_CONTENT_SELECTOR)
+    this.playerObserver = new MutationObserver(this.style.bind(this))
+    const playerObserverConfig = {subtree: true, childList: true}
+    this.playerObserver.observe(playerContainer, playerObserverConfig)
+  }
+
+  /**
+   * Fetch playlist data from Spotify API - split into it's own method so can be called periodically throughout the instance's lifecycle.
+   */
+  async fetchPlaylists() {
+    if (!this.spotifyClient) {
+      throw new Error(`Cannot fetch playlists, spotifyClient not setup.`)
+    }
+
+    const playlistDataArray = await Promise.all(this.playlistIds.map(async id => {
+      const data = await this.spotifyClient.getPlaylist(id)
+      return [id, data]
+    }))
+    this.playlistData = Object.fromEntries(playlistDataArray)
+    console.log(`Fetched playlist data for ${Object.keys(this.playlistData).length} playlists: ${Object.keys(this.playlistData)}`)
+  }
+
+  /**
+   * Helper to update specified style on given element and its children.
+   */
+  updateStyleRecursive(element, styleUpdate, recursiveDepth) {
+    Object.entries(styleUpdate).forEach(([attribute, value]) => element.style[attribute] = value)
+    if (recursiveDepth > 0) {
+      const children = [...element.children]
+      children.forEach(childElement => this.updateStyleRecursive(childElement, styleUpdate, recursiveDepth-1))
+    }
+  }
+
+  trackStyle(trackElement) {
+    // Will need to generalize this.
+    const primaryPlaylistId = FOCI_PLAYLIST_ID
+    const primaryPlaylistData = this.playlistData[primaryPlaylistId]
+
+    const elementTrackId = trackElement.getAttribute('href').split('/')[2]
     
-    // Setup polling timeout.
-    setTimeout(() => {
-      clearInterval(pollInterval)
-      reject(`Content poll timed out after ${CONTENT_POLL_TIMEOUT}ms`)
-    }, CONTENT_POLL_TIMEOUT)
-  })
-}
+    // Determine color.
+    let color = NOT_INCLUDED_COLOR
+    const trackIncludedPrimaryPlaylist = this.spotifyClient.trackIdInPlaylist({trackId: elementTrackId, playlistData: primaryPlaylistData})
+    if (trackIncludedPrimaryPlaylist) color = INCLUDED_PRIMARY_PLAYLIST_COLOR
 
-/**
- * Delay an additional fixed amount for page subcontent to fully load.
- */
-async function additionalTrackWait() {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve()
-    }, ADDITIONAL_WAIT)
-  })
-}
-
-/**
- * Update specified style on given element and its children.
- * @param {Element} element : Element to update and its children.
- * @param {Object} styleUpdate : Dictionary of style updates to make: { styleAttribute: newValue }.
- * @param {Number} recursiveDepth   : Orders of children to also update.
- */
-function updateStyleRecursive(element, styleUpdate, recursiveDepth) {
-  Object.entries(styleUpdate).forEach(([attribute, value]) => element.style[attribute] = value)
-  if (recursiveDepth > 0) {
-    children = [...element.children]
-    children.forEach(childElement => updateStyleRecursive(childElement, styleUpdate, recursiveDepth-1))
+    return {color}
   }
-}
 
-/**
- * Determine color of given track element.
- * @param {Element} trackElement : Track element to determine color of.
- * @return {Object} : Style updates to make to track element: { styleAttribute: newValue }.
- */
-function trackColor(trackElement, {}) {
-  return {
-    color: INCLUDED_FOCI_COLOR
+  /**
+   * Style all elements matching the specified selector with the result of the speicfied styleFunction.
+   */
+  styleElementType(selector, styleFunction, styleDepth) {
+    const elements = document.querySelectorAll(selector)
+    elements.forEach(element => {
+      // Update element and as many orders of children as specified.
+      const styleUpdate = styleFunction(element)
+      this.updateStyleRecursive(element, styleUpdate, styleDepth)
+    })
   }
-}
 
-/**
- * Update style of matching elements according to provided style function.
- * @param {String} selector : CSS selector for elements to update.
- * @param {Function} styleFunction : Function returning style update to make on matching elements: 
- * @param {Object} styleFunctionKwargs : Object of named args to pass into styleFunction.
- *  (element, kwargs) => { styleAttribute: newValue }.
- */
-function colorCodeElements(selector, styleFunction, styleFunctionKwargs) {
-  elements = document.querySelectorAll(selector)
-  elements.forEach(element => {
-    // Update element and its first order children.
-    styleUpdate = styleFunction(element, styleFunctionKwargs)
-    updateStyleRecursive(element, styleUpdate, 1)
-  })
+  /**
+   * Style all elements on interest in the web player.
+   */
+  style() {    
+    this.styleElementType(TRACK_LINKS_SELECTOR, this.trackStyle.bind(this), 1)
+  }
 }
 
 async function main() {
-  try {
-    await waitForContent()
-  } catch (error) {
-    console.error(`Error waiting for content: ${error}`)
-  }
-
-  await additionalTrackWait()
-  colorKwargs = {}
-  colorCodeElements(TRACK_SELECTOR, trackColor, colorKwargs)
-  
+  styler = new WebPlayerStyler(PLAYLIST_IDS)
 }
 
 main()
