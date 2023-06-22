@@ -14,7 +14,8 @@
       ],
       "matches": [
         "https://open.spotify.com/*"
-      ]
+      ],
+      "type": "module"
     }
   ],
   "web_accessible_resources": [
@@ -23,7 +24,9 @@
         "https://open.spotify.com/*"
       ],
       "resources": [
-        "utils/spotify_client.js"
+        "utils/spotify_client.js",
+        "utils/cache.js",
+        "utils/stats_reporter.js"
       ]
     }
   ]

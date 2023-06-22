@@ -31,7 +31,8 @@ class WebPlayerStyler {
    * Async class setup - ctor cannot use async/await.
    */
   async setup() {
-    // Setup spotify client.
+    // Setup spotify client - note this cannot be done using traditional import 
+    // b/c this file is not treated as a module for some reason.
     const src = chrome.runtime.getURL('utils/spotify_client.js')
     const spotifyClientLibrary = await import(src)
     this.spotifyClient = new spotifyClientLibrary.SpotifyClient()
@@ -73,18 +74,21 @@ class WebPlayerStyler {
     }
   }
 
-  trackStyle(trackElement) {
+  async trackStyle(trackElement) {
     const elementTrackId = trackElement.getAttribute('href').split('/')[2]
     let color = NO_PLAYLIST_COLOR
-    let matched = false
-    Object.entries(PLAYLIST_STYLE_GUIDE).forEach(([playlistId, playlistStyle]) => {
-      const playlistData = this.playlistData[playlistId]
-      const trackIncluded = this.spotifyClient.trackIdInPlaylist({trackId: elementTrackId, playlistData: playlistData})
-      if (!matched && trackIncluded) {
-        matched = true
-        color = playlistStyle.color
-      }
+    const orderedPlaylistsData = Object.keys(PLAYLIST_STYLE_GUIDE).map(playlistID => {
+      return {playlistID, playlistData: this.playlistData[playlistID]}
     })
+    const matchedPlaylistId = await this.spotifyClient.trackIdInPlaylists({
+      trackId: elementTrackId,
+      orderedPlaylistsData: orderedPlaylistsData,
+      checkTrackAliases: true
+    })
+    if (matchedPlaylistId) {
+      const playlistStyle = PLAYLIST_STYLE_GUIDE[matchedPlaylistId]
+      color = playlistStyle.color
+    }
 
     return {color}
   }
@@ -92,20 +96,21 @@ class WebPlayerStyler {
   /**
    * Style all elements matching the specified selector with the result of the speicfied styleFunction.
    */
-  styleElementType(selector, styleFunction, styleDepth) {
+  async styleElementType(selector, styleFunction, styleDepth) {
     const elements = document.querySelectorAll(selector)
-    elements.forEach(element => {
+    const elementsArray = [...elements.values()]
+    await Promise.all(elementsArray.map(async element => {
       // Update element and as many orders of children as specified.
-      const styleUpdate = styleFunction(element)
+      const styleUpdate = await styleFunction(element)
       this.updateStyleRecursive(element, styleUpdate, styleDepth)
-    })
+    }))
   }
 
   /**
    * Style all elements on interest in the web player.
    */
-  style() {    
-    this.styleElementType(TRACK_LINKS_SELECTOR, this.trackStyle.bind(this), 1)
+  async style() {    
+    await this.styleElementType(TRACK_LINKS_SELECTOR, this.trackStyle.bind(this), 1)
   }
 }
 
